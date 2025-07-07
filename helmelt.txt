@@ -1,0 +1,73 @@
+#include <avr/io.h>
+#include <avr/delay.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
+
+unsigned int alcohol_Result;
+unsigned char alcohol_LOW, alcohol_HIGH;
+
+int main(void) {
+    cli();
+    DDRA = 0xFF; //A0~A7 출력으로 사용
+    DDRC = 0xFF; //C0~C7 출력으로 사용
+    DDRD = 0x08; //D3 출력으로 사용
+    DDRF = 0x00; //F0~F7 입력으로 사용
+
+    TIMSK = (0 << OCIE2) | (0 << TOIE2) | (0 << TICIE1) | (0 << OCIE1A) | (0 << OCIE1B) | (1 << TOIE1) | (0 << OCIE0) | (0 << TOIE0); //
+    TCCR1A = 0x00;
+    TCCR1B = 0x05;
+    TCNT1H = 0xFF;
+    TCNT1L = 0xFE;
+
+    ADMUX = (0 << REFS1) | (1 << REFS0) | (0 << ADLAR) | (0 << MUX4) | (0 << MUX3) | (0 << MUX2) | (0 << MUX1) | (0 << MUX0);  //ADC
+    ADCSRA = 0x87;
+
+    UCSR1C = 0x07; //parity x, 8
+    UCSR1B = (1 << RXCIE1) | (0 << TXCIE1) | (0 << UDRIE1) | (1 << RXEN1) | (1 << TXEN1) | (0 << UCSZ12) | (0 << RXB81) | (0 << TXB81); //Rx, Tx
+    UBRR1L = 0x19; //38400 baud rate
+
+    sei();
+
+    do {
+
+    } while (1);
+}
+ISR(TIMER1_OVF_vect) {
+    cli();
+    TCNT1H = 0xC2;s
+    TCNT1L = 0xF6;
+
+    while (!(UCSR1A & 0x20)); //데이터가 있을 때(1) 넘어갈 수 있음
+    UDR1 = calc_uart(); //킥보드부로 신호 전송
+    sei();
+}
+
+int calc_uart() {
+    int uart;
+    int a = measure_alcohol();
+    int b = testhelmet();
+    uart = (a << 4) | b; // 앞 4bit = 알코올 , 뒤 4bit = 헬멧 정보를 TX로 전송 
+    return uart;
+}
+
+int measure_alcohol() {
+    ADMUX = 0x40;
+    ADCSRA |= 0x40; // ADC start
+
+    while ((ADCSRA & 0x40)) {} //ADC complete stand by
+    alcohol_LOW = ADCL;
+    alcohol_HIGH = ADCH;
+    alcohol_Result = (alcohol_HIGH << 8) | alcohol_LOW;
+
+    return alcohol_Result / 100;
+
+}
+
+int testhelmet() { //헬멧 스위치가 눌리면 1값 아니면 0값 리턴
+
+    if ((PINF & 0x02) == 0) {
+        return 0;
+    }
+    else return 1;
+
+}
